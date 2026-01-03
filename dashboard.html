@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <title>Dashboard Pengurus</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <style>
+    body {
+      margin: 0;
+      padding: 20px;
+      font-family: 'Segoe UI', sans-serif;
+      background: #0f2027;
+      color: #fff;
+    }
+
+    h2 {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+
+    input, button {
+      padding: 10px;
+      border-radius: 8px;
+      border: none;
+      font-size: 14px;
+    }
+
+    input {
+      margin-right: 5px;
+    }
+
+    button {
+      background: #3a86ff;
+      color: white;
+      cursor: pointer;
+    }
+
+    .card {
+      background: #1e2a38;
+      padding: 15px;
+      border-radius: 14px;
+      margin-top: 15px;
+      box-shadow: 0 5px 15px rgba(0,0,0,0.4);
+    }
+
+    .badge {
+      background: #3a86ff;
+      padding: 6px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      margin-right: 6px;
+      display: inline-block;
+      margin-top: 6px;
+    }
+
+    #filter {
+      margin-top: 15px;
+    }
+  </style>
+</head>
+
+<body>
+
+<h2>🔐 Dashboard Pengurus</h2>
+
+<!-- LOGIN -->
+<div id="login">
+  <input type="password" id="password" placeholder="Password pengurus">
+  <button onclick="loadData()">Masuk</button>
+</div>
+
+<!-- FILTER TANGGAL -->
+<div id="filter" style="display:none;">
+  <br>
+  <input type="date" id="start">
+  <input type="date" id="end">
+  <button onclick="loadData()">Filter</button>
+</div>
+
+<!-- RANKING -->
+<div id="ranking"></div>
+
+<!-- GRAFIK -->
+<canvas id="chart" height="120"></canvas>
+
+<div id="detail"></div>
+
+<script>
+  const scriptURL = "https://script.google.com/macros/s/AKfycbyc7GQtK5ORpViRfMVw8Jj1wW74j5McQbkdVIhBy1N1EPLS0mhPKs83g71_z576Dj7Q/exec";
+
+  function loadData() {
+    const password = document.getElementById("password").value;
+    const start = document.getElementById("start").value;
+    const end = document.getElementById("end").value;
+
+    fetch(`${scriptURL}?password=${password}&start=${start}&end=${end}`)
+      .then(res => res.text())
+      .then(text => {
+        if (text === "UNAUTHORIZED") {
+          alert("Password salah. Ini bukan wilayah umum 😄");
+          return;
+        }
+
+        document.getElementById("filter").style.display = "block";
+        const data = JSON.parse(text);
+        renderRanking(data);
+        renderChart(data);
+      })
+      .catch(() => {
+        alert("Gagal memuat data. Cek script atau koneksi 😅");
+      });
+  }
+
+function renderRanking(data) {
+  const sorted = Object.entries(data)
+    .sort((a, b) => b[1].totalHari - a[1].totalHari);
+
+  let html = "<div class='card'><h3>🏆 Ranking Konsistensi</h3>";
+
+  sorted.forEach((item, index) => {
+    html += `
+      <p>
+        ${index + 1}. 
+        <b onclick="loadDetail('${item[0]}')" 
+           style="cursor:pointer;color:#3a86ff">
+           ${item[0]}
+        </b><br>
+        <span class="badge">Total: ${item[1].totalHari}</span>
+        <span class="badge">Wirit: ${item[1].wirit}</span>
+        <span class="badge">Agenda: ${item[1].agenda}</span>
+        <span class="badge">Iqro: ${item[1].iqro}</span>
+      </p>
+    `;
+  });
+
+  html += "</div>";
+  document.getElementById("ranking").innerHTML = html;
+}
+
+
+  function renderChart(data) {
+  const names = Object.keys(data);
+
+  const wiritData = names.map(n => data[n].wirit);
+  const agendaData = names.map(n => data[n].agenda);
+  const iqroData = names.map(n => data[n].iqro);
+
+  const ctx = document.getElementById("chart").getContext("2d");
+  if (window.myChart) window.myChart.destroy();
+
+  window.myChart = new Chart(ctx, {
+    type: "bar",
+    data: {
+      labels: names,
+      datasets: [
+        {
+          label: "Wirit",
+          data: wiritData,
+          backgroundColor: "#ffbe0b"
+        },
+        {
+          label: "Agenda",
+          data: agendaData,
+          backgroundColor: "#3a86ff"
+        },
+        {
+          label: "Iqro",
+          data: iqroData,
+          backgroundColor: "#06d6a0"
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      scales: {
+        y: {
+          beginAtZero: true,
+          ticks: {
+            stepSize: 1
+          }
+        }
+      }
+    }
+  });
+}
+
+function loadDetail(nama) {
+  const password = document.getElementById("password").value;
+  const start = document.getElementById("start").value;
+  const end = document.getElementById("end").value;
+
+  let url = `${scriptURL}?password=${password}&nama=${encodeURIComponent(nama)}`;
+  if (start) url += `&start=${start}`;
+  if (end) url += `&end=${end}`;
+
+  fetch(url)
+    .then(res => res.json())
+    .then(data => {
+      let html = `
+        <div class="card">
+          <h3>📋 Detail Log Day: ${nama}</h3>
+          <canvas id="detailChart" height="200"></canvas>
+          <hr>
+      `;
+
+      if (data.length === 0) {
+        html += "<p>Tidak ada data.</p>";
+      }
+
+    data.forEach(d => {
+    html += `
+        <p>
+        📆 <b>${formatTanggal(d.tanggal)}</b><br>
+        Wirit: ${d.wirit} |
+        Agenda: ${d.agenda} |
+        Iqro: ${d.iqro}<br>
+        📝 ${d.catatan || "-"}
+        </p><hr>
+    `;
+    });
+
+
+      html += "</div>";
+      document.getElementById("detail").innerHTML = html;
+
+      renderDetailChart(data, nama);
+    });
+}
+
+let detailChart;
+
+function renderDetailChart(data, nama) {
+  const labels = data.map(d => formatTanggal(d.tanggal));
+
+  const wiritData = data.map(d => d.wirit === "Ya" ? 1 : 0);
+  const agendaData = data.map(d => d.agenda === "Ya" ? 1 : 0);
+  const iqroData = data.map(d => d.iqro === "Ya" ? 1 : 0);
+
+  const ctx = document.getElementById("detailChart").getContext("2d");
+  if (detailChart) detailChart.destroy();
+
+  detailChart = new Chart(ctx, {
+    type: "line",
+    data: {
+      labels,
+      datasets: [
+        {
+          label: "Wirit",
+          data: wiritData,
+          borderColor: "#ffbe0b",
+          tension: 0.3
+        },
+        {
+          label: "Agenda",
+          data: agendaData,
+          borderColor: "#3a86ff",
+          tension: 0.3
+        },
+        {
+          label: "Iqro",
+          data: iqroData,
+          borderColor: "#06d6a0",
+          tension: 0.3
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      scales: {
+        y: {
+          min: 0,
+          max: 1,
+          ticks: {
+            stepSize: 1,
+            callback: v => v === 1 ? "Ya" : "Tidak"
+          }
+        }
+      }
+    }
+  });
+}
+
+function formatTanggal(dateString) {
+  const d = new Date(dateString);
+  return d.toLocaleString("id-ID", {
+    timeZone: "Asia/Jakarta",
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+
+
+
+</script>
+
+</body>
+</html>
